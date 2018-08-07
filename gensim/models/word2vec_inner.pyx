@@ -157,7 +157,7 @@ cdef inline unsigned long long random_int32(unsigned long long *next_random) nog
 cdef unsigned long long fast_sentence_sg_neg(
     const int negative, np.uint32_t *cum_table, unsigned long long cum_table_len,
     REAL_t *syn0, REAL_t *syn1neg, const int size, const np.uint32_t word_index,
-    const np.uint32_t word2_index, const REAL_t alpha, REAL_t *work,
+    const np.uint32_t word2_index, const REAL_t alpha, const np.float32_t *weights, REAL_t *work,
     unsigned long long next_random, REAL_t *word_locks,
     const int _compute_loss, REAL_t *_running_training_loss_param) nogil:
     """Train on a single effective word from the current batch, using the Skip-Gram model.
@@ -228,7 +228,7 @@ cdef unsigned long long fast_sentence_sg_neg(
         if f_dot <= -MAX_EXP or f_dot >= MAX_EXP:
             continue
         f = EXP_TABLE[<int>((f_dot + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]
-        g = (label - f) * alpha
+        g = (label - f) * alpha * weights[word2_index]
 
         if _compute_loss == 1:
             f_dot = (f_dot if d == 0  else -f_dot)
@@ -462,7 +462,7 @@ cdef unsigned long long fast_sentence_cbow_neg(
     return next_random
 
 
-def train_batch_sg(model, sentences, alpha, _work, compute_loss):
+def train_batch_sg(model, sentences, alpha, weights, _work, compute_loss):
     """Update skip-gram model by training on a batch of sentences.
 
     Called internally from :meth:`~gensim.models.word2vec.Word2Vec.train`.
@@ -498,6 +498,7 @@ def train_batch_sg(model, sentences, alpha, _work, compute_loss):
     cdef REAL_t *word_locks = <REAL_t *>(np.PyArray_DATA(model.trainables.vectors_lockf))
     cdef REAL_t *work
     cdef REAL_t _alpha = alpha
+    cdef REAL_t *_weights
     cdef int size = model.wv.vector_size
 
     cdef int codelens[MAX_SENTENCE_LEN]
@@ -525,6 +526,7 @@ def train_batch_sg(model, sentences, alpha, _work, compute_loss):
     if hs:
         syn1 = <REAL_t *>(np.PyArray_DATA(model.trainables.syn1))
 
+    _weights = <REAL_t *>(np.PyArray_DATA(weights))
     if negative:
         syn1neg = <REAL_t *>(np.PyArray_DATA(model.trainables.syn1neg))
         cum_table = <np.uint32_t *>(np.PyArray_DATA(model.vocabulary.cum_table))
@@ -587,7 +589,7 @@ def train_batch_sg(model, sentences, alpha, _work, compute_loss):
                     if hs:
                         fast_sentence_sg_hs(points[i], codes[i], codelens[i], syn0, syn1, size, indexes[j], _alpha, work, word_locks, _compute_loss, &_running_training_loss)
                     if negative:
-                        next_random = fast_sentence_sg_neg(negative, cum_table, cum_table_len, syn0, syn1neg, size, indexes[i], indexes[j], _alpha, work, next_random, word_locks, _compute_loss, &_running_training_loss)
+                        next_random = fast_sentence_sg_neg(negative, cum_table, cum_table_len, syn0, syn1neg, size, indexes[i], indexes[j], _alpha, _weights, work, next_random, word_locks, _compute_loss, &_running_training_loss)
 
     model.running_training_loss = _running_training_loss
     return effective_words

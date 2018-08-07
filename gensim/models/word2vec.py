@@ -144,12 +144,13 @@ from functools import reduce
 logger = logging.getLogger(__name__)
 
 try:
-    raise ImportError()
+    # raise ImportError()
     from gensim.models.word2vec_inner import train_batch_sg, train_batch_cbow
     from gensim.models.word2vec_inner import score_sentence_sg, score_sentence_cbow
     from gensim.models.word2vec_inner import FAST_VERSION, MAX_WORDS_IN_BATCH
 
 except ImportError:
+    raise
     # failed... fall back to plain numpy (20-80x slower training than the above)
     FAST_VERSION = -1
     MAX_WORDS_IN_BATCH = 10000
@@ -784,7 +785,8 @@ class Word2Vec(BaseWordEmbeddingsModel):
                                dtype=float)
         self.freq /= self.freq.max()
         self.weights = np.power(self.freq, self.freq_pow)
-        print(self.weights)
+        self.weights = np.asarray(self.weights, dtype=np.float32)
+        # print(self.weights)
         work, neu1 = inits
         tally = 0
         if self.sg:
