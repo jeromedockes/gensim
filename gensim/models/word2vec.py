@@ -118,6 +118,8 @@ import multiprocessing
 import itertools
 import warnings
 
+import numpy as np
+
 from gensim.utils import keep_vocab_item, call_on_class_only
 from gensim.models.keyedvectors import Vocab, Word2VecKeyedVectors
 from gensim.models.base_any2vec import BaseWordEmbeddingsModel
@@ -142,6 +144,7 @@ from functools import reduce
 logger = logging.getLogger(__name__)
 
 try:
+    raise ImportError()
     from gensim.models.word2vec_inner import train_batch_sg, train_batch_cbow
     from gensim.models.word2vec_inner import score_sentence_sg, score_sentence_cbow
     from gensim.models.word2vec_inner import FAST_VERSION, MAX_WORDS_IN_BATCH
@@ -151,7 +154,7 @@ except ImportError:
     FAST_VERSION = -1
     MAX_WORDS_IN_BATCH = 10000
 
-    def train_batch_sg(model, sentences, alpha, work=None, compute_loss=False):
+    def train_batch_sg(model, sentences, alpha, weights, work=None, compute_loss=False):
         """Update skip-gram model by training on a sequence of sentences.
 
         Called internally from :meth:`~gensim.models.word2vec.Word2Vec.train`.
@@ -181,6 +184,7 @@ except ImportError:
             and were not discarded by negative sampling).
 
         """
+        print('train sg: {}'.format(weights))
         result = 0
         for sentence in sentences:
             word_vocabs = [model.wv.vocab[w] for w in sentence if w in model.wv.vocab and
@@ -194,7 +198,7 @@ except ImportError:
                     # don't train on the `word` itself
                     if pos2 != pos:
                         train_sg_pair(
-                            model, model.wv.index2word[word.index], word2.index, alpha, compute_loss=compute_loss
+                            model, model.wv.index2word[word.index], word2.index, alpha, weights, compute_loss=compute_loss
                         )
 
             result += len(word_vocabs)
@@ -336,7 +340,7 @@ except ImportError:
         return log_prob_sentence
 
 
-def train_sg_pair(model, word, context_index, alpha, learn_vectors=True, learn_hidden=True,
+def train_sg_pair(model, word, context_index, alpha, weights, learn_vectors=True, learn_hidden=True,
                   context_vectors=None, context_locks=None, compute_loss=False, is_ft=False):
     """Train the passed model instance on a word and its context, using the Skip-gram algorithm.
 
@@ -370,6 +374,7 @@ def train_sg_pair(model, word, context_index, alpha, learn_vectors=True, learn_h
         Error vector to be back-propagated.
 
     """
+    # print('train sg pair: {}'.format(weights))
     if context_vectors is None:
         if is_ft:
             context_vectors_vocab = model.wv.syn0_vocab
@@ -395,6 +400,7 @@ def train_sg_pair(model, word, context_index, alpha, learn_vectors=True, learn_h
     else:
         l1 = context_vectors[context_index]  # input word (NN input/projection layer)
         lock_factor = context_locks[context_index]
+        weight = weights[context_index]
 
     neu1e = zeros(l1.shape)
 
@@ -403,7 +409,8 @@ def train_sg_pair(model, word, context_index, alpha, learn_vectors=True, learn_h
         l2a = deepcopy(model.syn1[predict_word.point])  # 2d matrix, codelen x layer1_size
         prod_term = dot(l1, l2a.T)
         fa = expit(prod_term)  # propagate hidden -> output
-        ga = (1 - predict_word.code - fa) * alpha  # vector of error gradients multiplied by the learning rate
+        print('weight: {:.3}'.format(weight))
+        ga = (1 - predict_word.code - fa) * alpha * weight  # vector of error gradients multiplied by the learning rate
         if learn_hidden:
             model.syn1[predict_word.point] += outer(ga, l1)  # learn hidden -> output
         neu1e += dot(ga, l2a)  # save error
@@ -424,7 +431,8 @@ def train_sg_pair(model, word, context_index, alpha, learn_vectors=True, learn_h
         l2b = model.syn1neg[word_indices]  # 2d matrix, k+1 x layer1_size
         prod_term = dot(l1, l2b.T)
         fb = expit(prod_term)  # propagate hidden -> output
-        gb = (model.neg_labels - fb) * alpha  # vector of error gradients multiplied by the learning rate
+        print('word: {}, weight: {:.3}'.format(model.wv.index2word[context_index], weight))
+        gb = (model.neg_labels - fb) * alpha * weight  # vector of error gradients multiplied by the learning rate
         if learn_hidden:
             model.syn1neg[word_indices] += outer(gb, l1)  # learn hidden -> output
         neu1e += dot(gb, l2b)  # save error
@@ -631,10 +639,10 @@ class Word2Vec(BaseWordEmbeddingsModel):
     """
 
     def __init__(self, sentences=None, input_streams=None, size=100, alpha=0.025, window=5, min_count=5,
-                 max_vocab_size=None, sample=1e-3, seed=1, workers=3, min_alpha=0.0001,
+                 max_vocab_size=None, sample=0, seed=1, workers=3, min_alpha=0.0001,
                  sg=0, hs=0, negative=5, ns_exponent=0.75, cbow_mean=1, hashfxn=hash, iter=5, null_word=0,
                  trim_rule=None, sorted_vocab=1, batch_words=MAX_WORDS_IN_BATCH, compute_loss=False, callbacks=(),
-                 max_final_vocab=None):
+                 max_final_vocab=None, freq_pow=-0.5):
         """
 
         Parameters
@@ -736,6 +744,7 @@ class Word2Vec(BaseWordEmbeddingsModel):
         >>> model = Word2Vec(input_streams=input_streams, min_count=1)
 
         """
+        self.freq_pow = freq_pow
         self.max_final_vocab = max_final_vocab
 
         self.callbacks = callbacks
@@ -771,10 +780,15 @@ class Word2Vec(BaseWordEmbeddingsModel):
              2-tuple (effective word count after ignoring unknown words and sentence length trimming, total word count).
 
         """
+        self.freq = np.asarray([w.count for w in self.wv.vocab.values()],
+                               dtype=float)
+        self.freq /= self.freq.max()
+        self.weights = np.power(self.freq, self.freq_pow)
+        print(self.weights)
         work, neu1 = inits
         tally = 0
         if self.sg:
-            tally += train_batch_sg(self, sentences, alpha, work, self.compute_loss)
+            tally += train_batch_sg(self, sentences, alpha, self.weights, work, self.compute_loss)
         else:
             tally += train_batch_cbow(self, sentences, alpha, work, neu1, self.compute_loss)
         return tally, self._raw_word_count(sentences)
