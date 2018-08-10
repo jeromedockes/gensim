@@ -783,8 +783,10 @@ class Word2Vec(BaseWordEmbeddingsModel):
         """
         self.freq = np.asarray([w.count for w in self.wv.vocab.values()],
                                dtype=float)
-        self.freq /= self.freq.max()
+        self.freq /= self.freq.sum()
         self.weights = np.power(self.freq, self.freq_pow)
+        correction = 1 / (self.freq * self.weights).sum()
+        self.weights *= correction
         self.weights = np.asarray(self.weights, dtype=np.float32)
         # print(self.weights)
         work, neu1 = inits
