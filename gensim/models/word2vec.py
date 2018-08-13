@@ -746,6 +746,7 @@ class Word2Vec(BaseWordEmbeddingsModel):
 
         """
         self.freq_pow = freq_pow
+        self.downsampling_ = 1.
         assert reweight_mode in ['weights', 'sampling', None]
         if reweight_mode is not None:
             sample = 0
@@ -760,6 +761,7 @@ class Word2Vec(BaseWordEmbeddingsModel):
             max_vocab_size=max_vocab_size, min_count=min_count, sample=sample, sorted_vocab=bool(sorted_vocab),
             null_word=null_word, max_final_vocab=max_final_vocab, ns_exponent=ns_exponent, freq_pow=self.freq_pow,
             reweight_mode=self.reweight_mode)
+        self.downsampling_ = self.vocabulary.downsampling_
         self.trainables = Word2VecTrainables(seed=seed, vector_size=size, hashfxn=hashfxn)
 
         super(Word2Vec, self).__init__(
@@ -1758,6 +1760,7 @@ class Word2VecVocab(utils.SaveLoad):
             logger.info("deleting the raw counts dictionary of %i items", len(self.raw_vocab))
             self.raw_vocab = defaultdict(int)
 
+        self.downsampling_ = downsample_total / retain_total
         logger.info("sample=%g downsamples %i most-common words", sample, downsample_unique)
         logger.info(
             "downsampling leaves estimated %i word corpus (%.1f%% of prior %i)",
