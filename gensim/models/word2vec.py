@@ -643,7 +643,7 @@ class Word2Vec(BaseWordEmbeddingsModel):
                  max_vocab_size=None, sample=0, seed=1, workers=3, min_alpha=0.0001,
                  sg=0, hs=0, negative=5, ns_exponent=0.75, cbow_mean=1, hashfxn=hash, iter=5, null_word=0,
                  trim_rule=None, sorted_vocab=1, batch_words=MAX_WORDS_IN_BATCH, compute_loss=False, callbacks=(),
-                 max_final_vocab=None, freq_pow=-0.5):
+                 max_final_vocab=None, freq_pow=-0.5, reweight_mode='weight'):
         """
 
         Parameters
@@ -746,6 +746,10 @@ class Word2Vec(BaseWordEmbeddingsModel):
 
         """
         self.freq_pow = freq_pow
+        assert reweight_mode in ['weights', 'sampling', None]
+        if reweight_mode is not None:
+            sample = 0
+        self.reweight_mode = reweight_mode
         self.max_final_vocab = max_final_vocab
 
         self.callbacks = callbacks
@@ -754,7 +758,8 @@ class Word2Vec(BaseWordEmbeddingsModel):
         self.wv = Word2VecKeyedVectors(size)
         self.vocabulary = Word2VecVocab(
             max_vocab_size=max_vocab_size, min_count=min_count, sample=sample, sorted_vocab=bool(sorted_vocab),
-            null_word=null_word, max_final_vocab=max_final_vocab, ns_exponent=ns_exponent)
+            null_word=null_word, max_final_vocab=max_final_vocab, ns_exponent=ns_exponent, freq_pow=self.freq_pow,
+            reweight_mode=self.reweight_mode)
         self.trainables = Word2VecTrainables(seed=seed, vector_size=size, hashfxn=hashfxn)
 
         super(Word2Vec, self).__init__(
@@ -788,6 +793,8 @@ class Word2Vec(BaseWordEmbeddingsModel):
         correction = 1 / (self.freq * self.weights).sum()
         self.weights *= correction
         self.weights = np.asarray(self.weights, dtype=np.float32)
+        if self.reweight_mode != 'weights':
+            self.weights = np.ones(self.weights.shape, dtype=np.float32)
         # print(self.weights)
         work, neu1 = inits
         tally = 0
@@ -1512,7 +1519,7 @@ class Word2VecVocab(utils.SaveLoad):
     """Vocabulary used by :class:`~gensim.models.word2vec.Word2Vec`."""
     def __init__(
             self, max_vocab_size=None, min_count=5, sample=1e-3, sorted_vocab=True, null_word=0,
-            max_final_vocab=None, ns_exponent=0.75):
+            max_final_vocab=None, ns_exponent=0.75, freq_pow=-.5, reweight_mode='weights'):
         self.max_vocab_size = max_vocab_size
         self.min_count = min_count
         self.sample = sample
@@ -1522,6 +1529,8 @@ class Word2VecVocab(utils.SaveLoad):
         self.raw_vocab = None
         self.max_final_vocab = max_final_vocab
         self.ns_exponent = ns_exponent
+        self.reweight_mode = reweight_mode
+        self.freq_pow = freq_pow
 
     def _scan_vocab_singlestream(self, sentences, progress_per, trim_rule):
         sentence_no = -1
@@ -1728,10 +1737,14 @@ class Word2VecVocab(utils.SaveLoad):
             # new shorthand: sample >= 1 means downsample all words with higher count than sample
             threshold_count = int(sample * (3 + sqrt(5)) / 2)
 
+        min_freq = np.min([self.raw_vocab[w] for w in retain_words])
         downsample_total, downsample_unique = 0, 0
         for w in retain_words:
             v = self.raw_vocab[w]
-            word_probability = (sqrt(v / threshold_count) + 1) * (threshold_count / v)
+            if self.reweight_mode != 'sampling':
+                word_probability = (sqrt(v / threshold_count) + 1) * (threshold_count / v)
+            else:
+                word_probability = np.power(v / min_freq, self.freq_pow)
             if word_probability < 1.0:
                 downsample_unique += 1
                 downsample_total += word_probability * v
