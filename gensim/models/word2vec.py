@@ -770,6 +770,10 @@ class Word2Vec(BaseWordEmbeddingsModel):
             seed=seed, hs=hs, negative=negative, cbow_mean=cbow_mean, min_alpha=min_alpha, compute_loss=compute_loss,
             fast_version=FAST_VERSION)
 
+    def build_vocab(self, *args, **kwargs):
+        super(Word2Vec, self).build_vocab(*args, **kwargs)
+        self.downsampling_ = self.vocabulary.downsampling_
+
     def _do_train_job(self, sentences, alpha, inits):
         """Train the model on a single batch of sentences.
 
@@ -1533,6 +1537,7 @@ class Word2VecVocab(utils.SaveLoad):
         self.ns_exponent = ns_exponent
         self.reweight_mode = reweight_mode
         self.freq_pow = freq_pow
+        self.downsampling_ = 1.
 
     def _scan_vocab_singlestream(self, sentences, progress_per, trim_rule):
         sentence_no = -1
