@@ -643,7 +643,7 @@ class Word2Vec(BaseWordEmbeddingsModel):
                  max_vocab_size=None, sample=0, seed=1, workers=3, min_alpha=0.0001,
                  sg=0, hs=0, negative=5, ns_exponent=0.75, cbow_mean=1, hashfxn=hash, iter=5, null_word=0,
                  trim_rule=None, sorted_vocab=1, batch_words=MAX_WORDS_IN_BATCH, compute_loss=False, callbacks=(),
-                 max_final_vocab=None, freq_pow=-0.5, reweight_mode='weight'):
+                 max_final_vocab=None, freq_pow=-0.5, reweight_mode='weight', max_weight_ratio=100):
         """
 
         Parameters
@@ -746,6 +746,7 @@ class Word2Vec(BaseWordEmbeddingsModel):
 
         """
         self.freq_pow = freq_pow
+        self.max_weight_ratio = max_weight_ratio
         self.downsampling_ = 1.
         assert reweight_mode in ['weights', 'sampling', None]
         if reweight_mode is not None:
@@ -796,6 +797,9 @@ class Word2Vec(BaseWordEmbeddingsModel):
                                dtype=float)
         self.freq /= self.freq.sum()
         self.weights = np.power(self.freq, self.freq_pow)
+        if self.max_weight_ratio is not None:
+            self.weights = np.minimum(
+                self.weights, self.max_weight_ratio * self.weights.min())
         correction = 1 / (self.freq * self.weights).sum()
         self.weights *= correction
         self.weights = np.asarray(self.weights, dtype=np.float32)
