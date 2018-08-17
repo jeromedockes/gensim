@@ -804,7 +804,7 @@ class Word2Vec(BaseWordEmbeddingsModel):
                                dtype=float)
         self.freq /= self.freq.sum()
         if self.reweight_mode != 'weights':
-            self.weights = np.ones(self.weights.shape, dtype=np.float32)
+            self.weights = np.ones(self.freq.shape, dtype=np.float32)
         else:
             self.weights = np.asarray(
                 importance_weights(
