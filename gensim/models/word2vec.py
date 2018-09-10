@@ -119,6 +119,7 @@ import itertools
 import warnings
 
 import numpy as np
+from scipy.special import logsumexp
 
 from gensim.utils import keep_vocab_item, call_on_class_only
 from gensim.models.keyedvectors import Vocab, Word2VecKeyedVectors
@@ -605,10 +606,12 @@ def score_cbow_pair(model, word, l1):
     return sum(lprob)
 
 
-def importance_weights(frequencies, importance_exponent, max_weight):
-    weights = np.power(frequencies * len(frequencies), - importance_exponent)
-    weights = np.minimum(weights, max_weight)
-    return weights
+def importance_weights(frequencies, importance_exponent):
+    assert np.allclose(frequencies.sum(), 1)
+    return np.exp(
+        - importance_exponent * np.log(frequencies)
+        - logsumexp(
+            np.log(frequencies) * (1 - importance_exponent)))
 
 
 class Word2Vec(BaseWordEmbeddingsModel):
@@ -649,7 +652,7 @@ class Word2Vec(BaseWordEmbeddingsModel):
                  max_vocab_size=None, sample=0, seed=1, workers=3, min_alpha=0.0001,
                  sg=0, hs=0, negative=5, ns_exponent=0.75, cbow_mean=1, hashfxn=hash, iter=5, null_word=0,
                  trim_rule=None, sorted_vocab=1, batch_words=MAX_WORDS_IN_BATCH, compute_loss=False, callbacks=(),
-                 max_final_vocab=None, importance_exponent=0., reweight_mode='weights', max_weight=1000, correct_mean_weight=True):
+                 max_final_vocab=None, importance_exponent=0., reweight_mode='weights'):
         """
 
         Parameters
@@ -752,8 +755,6 @@ class Word2Vec(BaseWordEmbeddingsModel):
 
         """
         self.importance_exponent = importance_exponent
-        self.max_weight = max_weight
-        self.correct_mean_weight = correct_mean_weight
         self.downsampling_ = 1.
         assert reweight_mode in ['weights', 'sampling', None]
         if reweight_mode is not None:
@@ -809,11 +810,8 @@ class Word2Vec(BaseWordEmbeddingsModel):
             self.weights = np.ones(self.freq.shape, dtype=np.float32)
         else:
             self.weights = np.asarray(
-                importance_weights(
-                    self.freq, self.importance_exponent, self.max_weight),
+                importance_weights(self.freq, self.importance_exponent),
                 dtype=np.float32)
-        if self.correct_mean_weight:
-            self.weights /= (self.freq * self.weights).sum()
         work, neu1 = inits
         tally = 0
         if self.sg:
