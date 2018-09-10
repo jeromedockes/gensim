@@ -649,7 +649,7 @@ class Word2Vec(BaseWordEmbeddingsModel):
                  max_vocab_size=None, sample=0, seed=1, workers=3, min_alpha=0.0001,
                  sg=0, hs=0, negative=5, ns_exponent=0.75, cbow_mean=1, hashfxn=hash, iter=5, null_word=0,
                  trim_rule=None, sorted_vocab=1, batch_words=MAX_WORDS_IN_BATCH, compute_loss=False, callbacks=(),
-                 max_final_vocab=None, importance_exponent=0., reweight_mode='weights', max_weight=100):
+                 max_final_vocab=None, importance_exponent=0., reweight_mode='weights', max_weight=1000):
         """
 
         Parameters
