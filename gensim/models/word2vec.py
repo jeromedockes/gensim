@@ -800,8 +800,9 @@ class Word2Vec(BaseWordEmbeddingsModel):
              2-tuple (effective word count after ignoring unknown words and sentence length trimming, total word count).
 
         """
-        self.freq = np.asarray([w.count for w in self.wv.vocab.values()],
-                               dtype=float)
+        self.freq = np.empty(len(self.wv.vocab), dtype=np.float32)
+        for w in self.wv.vocab.values():
+            self.freq[w.index] = w.count
         self.freq /= self.freq.sum()
         if self.reweight_mode != 'weights':
             self.weights = np.ones(self.freq.shape, dtype=np.float32)
