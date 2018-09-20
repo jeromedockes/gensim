@@ -159,7 +159,7 @@ cdef unsigned long long fast_sentence_sg_neg(
     REAL_t *syn0, REAL_t *syn1neg, const int size, const np.uint32_t word_index,
     const np.uint32_t word2_index, const REAL_t alpha, const np.float32_t *weights, REAL_t *work,
     unsigned long long next_random, REAL_t *word_locks,
-    const int _compute_loss, REAL_t *_running_training_loss_param) nogil:
+    const int _compute_loss, REAL_t *_running_training_loss_param, const int random_weighting) nogil:
     """Train on a single effective word from the current batch, using the Skip-Gram model.
 
     In this model we are using a given word to predict a context word (a word that is
@@ -228,7 +228,10 @@ cdef unsigned long long fast_sentence_sg_neg(
         if f_dot <= -MAX_EXP or f_dot >= MAX_EXP:
             continue
         f = EXP_TABLE[<int>((f_dot + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]
-        g = (label - f) * alpha * weights[word2_index]
+        if random_weighting:
+            g = (label - f) * alpha * np.random.exponential()
+        else:
+            g = (label - f) * alpha * weights[word2_index]
 
         if _compute_loss == 1:
             f_dot = (f_dot if d == 0  else -f_dot)
@@ -488,6 +491,7 @@ def train_batch_sg(model, sentences, alpha, weights, _work, compute_loss):
 
     """
     cdef int hs = model.hs
+    cdef int random_weighting = model.random_weighting
     cdef int negative = model.negative
     cdef int sample = (model.vocabulary.sample != 0)
 
@@ -589,7 +593,7 @@ def train_batch_sg(model, sentences, alpha, weights, _work, compute_loss):
                     if hs:
                         fast_sentence_sg_hs(points[i], codes[i], codelens[i], syn0, syn1, size, indexes[j], _alpha, work, word_locks, _compute_loss, &_running_training_loss)
                     if negative:
-                        next_random = fast_sentence_sg_neg(negative, cum_table, cum_table_len, syn0, syn1neg, size, indexes[i], indexes[j], _alpha, _weights, work, next_random, word_locks, _compute_loss, &_running_training_loss)
+                        next_random = fast_sentence_sg_neg(negative, cum_table, cum_table_len, syn0, syn1neg, size, indexes[i], indexes[j], _alpha, _weights, work, next_random, word_locks, _compute_loss, &_running_training_loss, random_weighting)
 
     model.running_training_loss = _running_training_loss
     return effective_words
