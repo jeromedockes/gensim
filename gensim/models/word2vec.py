@@ -757,7 +757,7 @@ class Word2Vec(BaseWordEmbeddingsModel):
         self.importance_exponent = importance_exponent
         self.downsampling_ = 1.
         assert reweight_mode in ['weights', 'sampling', None, 'random']
-        self.random_weighting = int(self.reweight_mode == 'random')
+        self.random_weighting = int(reweight_mode == 'random')
         if reweight_mode is not None:
             sample = 0
         self.reweight_mode = reweight_mode
